@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+set -eo pipefail; [[ $DOKKU_TRACE ]] && set -x
+
+cd $(dirname "$0")
+make build-in-docker src-clean || exit 1
+echo "installed dokku smoke test plugin"
