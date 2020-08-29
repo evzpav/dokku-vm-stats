@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
 	"encoding/json"
 	"flag"
@@ -9,7 +10,9 @@ import (
 	"io/ioutil"
 	"math"
 	"net/http"
+	"net/url"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -29,42 +32,7 @@ Additional commands:`
 `
 )
 
-type stats struct {
-	url             string
-	intervalSeconds int
-	ticker          *time.Ticker
-}
-
-func newStats() *stats {
-	ticker := time.NewTicker(time.Duration(1) * time.Second)
-	return &stats{
-		ticker: ticker,
-		// intervalSeconds: 1,
-	}
-}
-
-// func (s *stats) SetInterval(i int) {
-// 	s.intervalSeconds = i
-// }
-
-func (s *stats) SetClientURL(url string) {
-	s.url = url
-}
-
-func (s *stats) sendStats(body interface{}) {
-	fmt.Println(s.url)
-	respBs, err := baseRequest(http.MethodPost, s.url, body)
-	if err != nil {
-		fmt.Printf("failed to post stats: %v\n", err)
-		return
-	}
-
-	fmt.Printf("resp: %+v\n", respBs)
-}
-
 func main() {
-	done := make(chan bool)
-	stats := newStats()
 	flag.Usage = usage
 	flag.Parse()
 
@@ -96,19 +64,35 @@ func main() {
 	case "help":
 		usage()
 	case "start":
-		url := flag.Arg(1)
-		if url == "" {
-			fmt.Println("invalid url")
+		baseURL := flag.Arg(1)
+		u, err := url.Parse(baseURL)
+		if err != nil || u.Scheme == "" || u.Host == "" {
+			fmt.Printf("invalid url: %v\n", err)
 			break
 		}
 
-		stats.SetClientURL(url)
-		fmt.Println("client url set:", stats.url)
+		everyMin := "*/1 * * * *"
 
-		stats.startCollectingData(done)
+		dir, err := os.Getwd()
+		if err != nil {
+			fmt.Printf("could not get working directory: %v\n", err)
+			break
+		}
+
+		cronCmd := fmt.Sprintf("%s %s/%s --url=%s", everyMin, dir, "collectstats", baseURL)
+
+		_, err = AddCronJob(cronCmd)
+		if err != nil {
+			fmt.Printf("failed to add cron command: %v\n", err)
+			return
+		}
 	default:
-		fmt.Println("invalid stats subcommand: ", subcommand)
-		os.Exit(1)
+		dokkuNotImplementExitCode, err := strconv.Atoi(os.Getenv("DOKKU_NOT_IMPLEMENTED_EXIT"))
+		if err != nil {
+			fmt.Println("failed to retrieve DOKKU_NOT_IMPLEMENTED_EXIT environment variable")
+			dokkuNotImplementExitCode = 10
+		}
+		os.Exit(dokkuNotImplementExitCode)
 	}
 }
 
@@ -125,9 +109,6 @@ func usage() {
 func (s *stats) startCollectingData(done chan bool) {
 	fmt.Println("start collecting data")
 
-	// statsData := make(chan interface{})
-
-	// go func() {
 	for {
 		select {
 		case <-done:
@@ -136,14 +117,8 @@ func (s *stats) startCollectingData(done chan bool) {
 			fmt.Println("Tick at", t)
 			m := getMemoryStats()
 			s.sendStats(m)
-			// statsData <- m
 		}
 	}
-	// }()
-
-	// for d := range statsData {
-	// 	s.sendStats(d)
-	// }
 
 }
 
@@ -214,4 +189,39 @@ func getMemoryStats() Memory {
 
 func toMegaBytes(m uint64) int64 {
 	return int64(m) / int64(math.Pow10(6))
+}
+
+func createEndpointFile(fileName, url string) error {
+	f, err := os.Create(fileName)
+	if err != nil {
+		fmt.Println("failed to create stats url file")
+		return err
+	}
+
+	_, err = f.Write([]byte(url))
+	if err != nil {
+		fmt.Println("failed to write stats url to file")
+		return err
+	}
+	return nil
+}
+
+func readEndpointFile() (string, error) {
+	f, err := os.Open("./stats_url.txt")
+	if err != nil {
+		fmt.Println("failed to open stats url file")
+		return "", err
+	}
+	defer f.Close()
+
+	b := bufio.NewReader(f)
+	line, _, err := b.ReadLine()
+	if err != nil {
+		fmt.Println("failed to read stats url file")
+		return "", err
+	}
+
+	// fmt.Printf("Url %v", string(line))
+
+	return string(line), nil
 }

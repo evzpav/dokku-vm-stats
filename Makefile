@@ -1,4 +1,4 @@
-GO_REPO_ROOT := /go/src/github.com/dokku/smoke-test-plugin
+GO_REPO_ROOT := /go/src/github.com/evzpav/dokku-vm-stats
 BUILD_IMAGE := golang:1.13
 
 .PHONY: build-in-docker build clean src-clean
@@ -10,16 +10,19 @@ build-in-docker:
 		$(BUILD_IMAGE) \
 		bash -c "make build" || exit $$?
 
-build: commands triggers
+build: commands collectstats triggers
 triggers: pre-deploy
 commands: **/**/commands.go
-	go build -a -o commands ./src/commands/commands.go
+	go build -a -o commands ./src/commands/*.go
+
+collectstats: 
+	go build -a -o collectstats ./src/scripts/collectstats.go
 
 pre-deploy: **/**/pre-deploy.go
 	go build -a -o pre-deploy ./src/triggers/pre-deploy.go
 
 clean:
-	rm -f commands pre-deploy
+	rm -f commands pre-deploy scripts
 
 src-clean:
 	rm -rf .editorconfig .gitignore src LICENSE Makefile README.md *.go

@@ -1,2 +1,6 @@
+# github.com/mackerelio/go-osstat v0.1.0
+github.com/mackerelio/go-osstat/memory
 # github.com/ryanuber/columnize v2.1.2+incompatible
 github.com/ryanuber/columnize
+# golang.org/x/sys v0.0.0-20190412213103-97732733099d
+golang.org/x/sys/unix
